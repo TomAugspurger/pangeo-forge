@@ -390,7 +390,8 @@ class XarrayZarrRecipe(BaseRecipe):
 
     def expand_target_dim(self, dim, dimsize):
         target_mapper = self.target.get_mapper()
-        self.target.fs.reset_instance_cache()
+        # Issue with the JSON only being partially written
+        self.target.fs.clear_instance_cache()
         self.target.fs.invalidate_cache()
         zgroup = zarr.open_group(target_mapper)
         ds = self.open_target()
