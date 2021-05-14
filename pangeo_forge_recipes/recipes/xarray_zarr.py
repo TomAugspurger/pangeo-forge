@@ -366,7 +366,7 @@ class XarrayZarrRecipe(BaseRecipe):
             dsets = [stack.enter_context(self.open_input(i)) for i in inputs]
             # explicitly chunking prevents eager evaluation during concat
             dsets = [ds.chunk() for ds in dsets]
-            logger.info(f"Combining inputs for chunk '{chunk_key}'")
+            logger.info(f"Combining inputs for chunk '{chunk_key} {len(dsets)}'")
             if len(dsets) > 1:
                 # During concat, attributes and encoding are taken from the first dataset
                 # https://github.com/pydata/xarray/issues/1614
@@ -404,7 +404,7 @@ class XarrayZarrRecipe(BaseRecipe):
             logger.debug(f"resizing array {v} to shape {shape}")
             arr.resize(shape)
 
-        # Issues in adlfs, with JSON being partially written
+        # Issues in adlfs, with JSON being partially written.
         self.target.fs.clear_instance_cache()
         self.target.fs.invalidate_cache()
         target_mapper = self.target.get_mapper()
