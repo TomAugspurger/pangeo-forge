@@ -208,7 +208,8 @@ class XarrayZarrRecipe(BaseRecipe):
                 # existing chunks
                 pass
 
-        except (FileNotFoundError, IOError, zarr.errors.GroupNotFoundError):
+        # except (FileNotFoundError, IOError, zarr.errors.GroupNotFoundError):
+        except Exception:
             logger.info("Creating a new dataset in target")
 
             # need to rewrite this as an append loop
