@@ -389,10 +389,10 @@ class XarrayZarrRecipe(BaseRecipe):
         return xr.open_zarr(target_mapper)
 
     def expand_target_dim(self, dim, dimsize):
-        target_mapper = self.target.get_mapper()
         # Issue with the JSON only being partially written
         self.target.fs.clear_instance_cache()
         self.target.fs.invalidate_cache()
+        target_mapper = self.target.get_mapper()
         zgroup = zarr.open_group(target_mapper)
         ds = self.open_target()
         sequence_axes = {v: ds[v].get_axis_num(dim) for v in ds.variables if dim in ds[v].dims}
