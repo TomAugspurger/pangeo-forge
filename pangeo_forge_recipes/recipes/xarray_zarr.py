@@ -404,6 +404,12 @@ class XarrayZarrRecipe(BaseRecipe):
             logger.debug(f"resizing array {v} to shape {shape}")
             arr.resize(shape)
 
+        # Issues in adlfs, with JSON being partially written
+        self.target.fs.clear_instance_cache()
+        self.target.fs.invalidate_cache()
+        target_mapper = self.target.get_mapper()
+        zgroup = zarr.open_group(target_mapper)
+
         # now explicity write the sequence coordinate to avoid missing data
         # when reopening
         if dim in zgroup:
