@@ -380,7 +380,10 @@ class XarrayZarrRecipe(BaseRecipe):
 
             logger.debug(f"{ds}")
 
-            # TODO: maybe do some chunking here?
+            if self.target_chunks:
+                # The input may be too large to process in memory at once, so
+                # rechunk it to the target chunks.
+                ds = ds.chunk(self.target_chunks)
             yield ds
 
     def open_target(self):
