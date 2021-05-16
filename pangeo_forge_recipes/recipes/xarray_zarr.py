@@ -300,23 +300,32 @@ class XarrayZarrRecipe(BaseRecipe):
                 # just delete all attributes from the var;
                 # they are not used anyway, and there can be conflicts
                 # related to xarray.coding.variables.safe_setitem
-                var_coded.attrs = {}
+                var = xr.backends.zarr.encode_zarr_variable(var_coded)
+                concat_dim_index = var.dims.index(self._concat_dim)
+
+                zarr_region = tuple(write_region.get(dim, slice(None)) for dim in var.dims)
+                lock_keys = [f"{vname}-{c}" for c in conflicts]
+                slices = dask.array.core.slices_from_chunks(
+                    dask.array.core.normalize_chunks(zarr_array.chunks, shape=var.shape)
+                )
+
                 with dask.config.set(
                     scheduler="single-threaded"
                 ):  # make sure we don't use a scheduler
-                    var = xr.backends.zarr.encode_zarr_variable(var_coded)
-                    data = np.asarray(
-                        var.data
-                    )  # TODO: can we buffer large data rather than loading it all?
-                zarr_region = tuple(write_region.get(dim, slice(None)) for dim in var.dims)
-                lock_keys = [f"{vname}-{c}" for c in conflicts]
-                logger.debug(f"Acquiring locks {lock_keys}")
-                with lock_for_conflicts(lock_keys):
-                    logger.info(
-                        f"Storing variable {vname} chunk {chunk_key} "
-                        f"to Zarr region {zarr_region}"
-                    )
-                    zarr_array[zarr_region] = data
+                    logger.debug(f"Acquiring locks {lock_keys}")
+                    with lock_for_conflicts(lock_keys):
+                        logger.info(
+                            f"Storing variable {vname} chunk {chunk_key} "
+                            f"to Zarr region {zarr_region}"
+                        )
+                        for slice_ in slices:
+                            target_slice = tuple(
+                                zarr_region[i] if i == concat_dim_index else slice_[i]
+                                for i in range(len(slices))
+                            )
+                            logger.debug("Writing target %s from %s", target_slice, slice_)
+                            data = np.asarray(var.data[slice_])
+                            zarr_array[target_slice] = data
 
     @property  # type: ignore
     @closure
