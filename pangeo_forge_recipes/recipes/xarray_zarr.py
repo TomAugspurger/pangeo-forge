@@ -300,6 +300,7 @@ class XarrayZarrRecipe(BaseRecipe):
                 # just delete all attributes from the var;
                 # they are not used anyway, and there can be conflicts
                 # related to xarray.coding.variables.safe_setitem
+                var_coded.attrs = {}
                 var = xr.backends.zarr.encode_zarr_variable(var_coded)
                 concat_dim_index = var.dims.index(self._concat_dim)
 
@@ -321,7 +322,7 @@ class XarrayZarrRecipe(BaseRecipe):
                         for slice_ in slices:
                             target_slice = tuple(
                                 zarr_region[i] if i == concat_dim_index else slice_[i]
-                                for i in range(len(slices))
+                                for i in range(len(slice_))
                             )
                             logger.debug("Writing target %s from %s", target_slice, slice_)
                             data = np.asarray(var.data[slice_])
