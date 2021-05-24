@@ -152,5 +152,5 @@ def test_chunks(
         assert all([item == chunk_len for item in ds_actual.chunks[other_dim][:-1]])
 
     ds_actual.load()
-    print(ds_actual)
     xr.testing.assert_identical(ds_actual, ds_expected)
+    assert ds_actual.chunks == ds_expected.chunks

@@ -13,6 +13,7 @@ import dask
 import numpy as np
 import xarray as xr
 import zarr
+from dask.base import is_dask_collection
 
 from ..patterns import FilePattern, prune_pattern
 from ..storage import AbstractTarget, CacheFSSpecTarget, MetadataTarget, file_opener
@@ -316,10 +317,23 @@ class XarrayZarrRecipe(BaseRecipe):
                 concat_dim_index = var.dims.index(self._concat_dim)
 
                 zarr_region = tuple(write_region.get(dim, slice(None)) for dim in var.dims)
+                concat_dim_zarr_region = zarr_region[concat_dim_index]
+
                 lock_keys = [f"{vname}-{c}" for c in conflicts]
                 slices = dask.array.core.slices_from_chunks(
                     dask.array.core.normalize_chunks(zarr_array.chunks, shape=var.shape)
                 )
+
+                # We'll have two slice objects at once, which differ along the concat_dim.
+                # The target slice needs to be offset by where in the output array we're writing.
+                offset_slices = []
+                for slice_ in slices:
+                    concat_dim_slice = slice_[concat_dim_index]
+                    concat_dim_slice = slice(
+                        concat_dim_slice.start + concat_dim_zarr_region.start,
+                        concat_dim_slice.stop + concat_dim_zarr_region.start,
+                    )
+                    offset_slices.append(concat_dim_slice)
 
                 with dask.config.set(
                     scheduler="single-threaded"
@@ -330,13 +344,16 @@ class XarrayZarrRecipe(BaseRecipe):
                             f"Storing variable {vname} chunk {chunk_key} "
                             f"to Zarr region {zarr_region}"
                         )
-                        for slice_ in slices:
+                        for slice_, offset_slice in zip(slices, offset_slices):
                             target_slice = tuple(
-                                zarr_region[i] if i == concat_dim_index else slice_[i]
+                                offset_slice if i == concat_dim_index else slice_[i]
                                 for i in range(len(slice_))
                             )
                             logger.debug("Writing target %s from %s", target_slice, slice_)
-                            data = np.asarray(var.data[slice_])
+                            data = var.data[slice_]
+                            if is_dask_collection(data):
+                                # TODO: Why is the dask config above not being honored here?
+                                data = data.compute(scheduler="single-threaded")
                             zarr_array[target_slice] = data
 
     @property  # type: ignore
