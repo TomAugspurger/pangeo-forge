@@ -85,6 +85,7 @@ class XarrayZarrRecipe(BaseRecipe):
       `(ds: xr.Dataset, filename: str) -> ds: xr.Dataset`.
     :param process_chunk: Function to call on each concatenated chunk, with signature
       `(ds: xr.Dataset) -> ds: xr.Dataset`.
+    :param lock_timeout: The default timeout for acquiring a chunk lock.
     """
 
     file_pattern: FilePattern
@@ -102,6 +103,7 @@ class XarrayZarrRecipe(BaseRecipe):
     fsspec_open_kwargs: dict = field(default_factory=dict)
     process_input: Optional[Callable[[xr.Dataset, str], xr.Dataset]] = None
     process_chunk: Optional[Callable[[xr.Dataset], xr.Dataset]] = None
+    lock_timeout: Optional[int] = None
 
     # internal attributes not meant to be seen or accessed by user
     _concat_dim: Optional[str] = None
@@ -333,6 +335,13 @@ class XarrayZarrRecipe(BaseRecipe):
                         concat_dim_slice.start + concat_dim_zarr_region.start,
                         concat_dim_slice.stop + concat_dim_zarr_region.start,
                     )
+
+                logger.debug(f"Acquiring locks {lock_keys}")
+                with lock_for_conflicts(lock_keys, timeout=self.lock_timeout):
+                    logger.info(
+                        f"Storing variable {vname} chunk {chunk_key} "
+                        f"to Zarr region {zarr_region}"
+                    )
                     offset_slices.append(concat_dim_slice)
 
                 with dask.config.set(
@@ -372,17 +381,23 @@ class XarrayZarrRecipe(BaseRecipe):
         logger.info(f"Opening input with Xarray {input_key}: '{fname}'")
         cache = self.input_cache if self.cache_inputs else None
         with file_opener(fname, cache=cache, copy_to_local=self.copy_input_to_local_file) as f:
-            ds = xr.open_dataset(f, **self.xarray_open_kwargs)
-            ds = fix_scalar_attr_encoding(ds)
+            with dask.config.set(scheduler="single-threaded"):  # make sure we don't use a scheduler
+                logger.debug(f"about to call xr.open_dataset on {f}")
+                kw = self.xarray_open_kwargs.copy()
+                if "engine" not in kw:
+                    kw["engine"] = "h5netcdf"
+                ds = xr.open_dataset(f, **kw)
+                logger.debug("successfully opened dataset")
+                ds = fix_scalar_attr_encoding(ds)
 
-            if self.delete_input_encoding:
-                for var in ds.variables:
-                    ds[var].encoding = {}
+                if self.delete_input_encoding:
+                    for var in ds.variables:
+                        ds[var].encoding = {}
 
-            if self.process_input is not None:
-                ds = self.process_input(ds, str(fname))
+                if self.process_input is not None:
+                    ds = self.process_input(ds, str(fname))
 
-            logger.debug(f"{ds}")
+                logger.debug(f"{ds}")
             yield ds
 
     def cache_input_metadata(self, input_key: InputKey):
@@ -407,16 +422,23 @@ class XarrayZarrRecipe(BaseRecipe):
             if len(dsets) > 1:
                 # During concat, attributes and encoding are taken from the first dataset
                 # https://github.com/pydata/xarray/issues/1614
-                ds = xr.concat(dsets, self._concat_dim, **self.xarray_concat_kwargs)
+                with dask.config.set(
+                    scheduler="single-threaded"
+                ):  # make sure we don't use a scheduler
+                    ds = xr.concat(dsets, self._concat_dim, **self.xarray_concat_kwargs)
             elif len(dsets) == 1:
                 ds = dsets[0]
             else:  # pragma: no cover
                 assert False, "Should never happen"
 
             if self.process_chunk is not None:
-                ds = self.process_chunk(ds)
+                with dask.config.set(
+                    scheduler="single-threaded"
+                ):  # make sure we don't use a scheduler
+                    ds = self.process_chunk(ds)
 
-            logger.debug(f"{ds}")
+            with dask.config.set(scheduler="single-threaded"):  # make sure we don't use a scheduler
+                logger.debug(f"{ds}")
 
             if self.target_chunks:
                 # The input may be too large to process in memory at once, so
