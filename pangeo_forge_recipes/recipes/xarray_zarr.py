@@ -335,6 +335,7 @@ class XarrayZarrRecipe(BaseRecipe):
                         concat_dim_slice.start + concat_dim_zarr_region.start,
                         concat_dim_slice.stop + concat_dim_zarr_region.start,
                     )
+                    offset_slices.append(concat_dim_slice)
 
                 logger.debug(f"Acquiring locks {lock_keys}")
                 with lock_for_conflicts(lock_keys, timeout=self.lock_timeout):
@@ -342,7 +343,6 @@ class XarrayZarrRecipe(BaseRecipe):
                         f"Storing variable {vname} chunk {chunk_key} "
                         f"to Zarr region {zarr_region}"
                     )
-                    offset_slices.append(concat_dim_slice)
 
                 with dask.config.set(
                     scheduler="single-threaded"
