@@ -322,7 +322,8 @@ class XarrayZarrRecipe(BaseRecipe):
                         var.data
                     )  # TODO: can we buffer large data rather than loading it all?
                 zarr_region = tuple(write_region.get(dim, slice(None)) for dim in var.dims)
-                lock_keys = [f"{vname}-{c}" for c in conflicts]
+                # lock_keys = [f"{vname}-{c}" for c in conflicts]
+                lock_keys = []
                 logger.debug(f"Acquiring locks {lock_keys}")
                 with lock_for_conflicts(lock_keys, timeout=self.lock_timeout):
                     logger.info(
