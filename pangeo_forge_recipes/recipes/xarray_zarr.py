@@ -320,8 +320,13 @@ class XarrayZarrRecipe(BaseRecipe):
                 # just delete all attributes from the var;
                 # they are not used anyway, and there can be conflicts
                 # related to xarray.coding.variables.safe_setitem
-                var_coded.attrs = {}
-                var = xr.backends.zarr.encode_zarr_variable(var_coded)
+
+                with dask.config.set(
+                    scheduler="single-threaded"
+                ):  # make sure we don't use a scheduler
+                    var_coded.attrs = {}
+                    var = xr.backends.zarr.encode_zarr_variable(var_coded)
+
                 concat_dim_index = var.dims.index(self._concat_dim)
 
                 zarr_region = tuple(write_region.get(dim, slice(None)) for dim in var.dims)
