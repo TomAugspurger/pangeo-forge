@@ -300,6 +300,12 @@ class XarrayZarrRecipe(BaseRecipe):
         with self.open_chunk(chunk_key) as ds_chunk:
             # writing a region means that all the variables MUST have concat_dim
             to_drop = [v for v in ds_chunk.variables if self._concat_dim not in ds_chunk[v].dims]
+
+            # XXX: https://github.com/pangeo-forge/pangeo-forge-recipes/issues/159
+            # Skipping repeated writes for some variables
+            if chunk_key[0] != 0:
+                to_drop.extend(["time", "yearday", "time_bnds"])
+
             ds_chunk = ds_chunk.drop_vars(to_drop)
 
             target_mapper = self.target.get_mapper()
@@ -346,12 +352,15 @@ class XarrayZarrRecipe(BaseRecipe):
                             f"Storing variable {vname} chunk {chunk_key} "
                             f"to Zarr region {zarr_region}"
                         )
-                        for slice_, offset_slice in zip(slices, offset_slices):
+                        n = len(slices)
+                        for i, (slice_, offset_slice) in enumerate(zip(slices, offset_slices), 1):
                             target_slice = tuple(
                                 offset_slice if i == concat_dim_index else slice_[i]
                                 for i in range(len(slice_))
                             )
-                            logger.debug("Writing target %s from %s", target_slice, slice_)
+                            logger.debug(
+                                "Writing target %s from %s [%d/%d]", target_slice, slice_, i, n
+                            )
                             data = var.data[slice_]
                             if is_dask_collection(data):
                                 # TODO: Why is the dask config above not being honored here?
